@@ -13,6 +13,7 @@ export default function ScannerPage() {
     const router = useRouter();
 
     const [isScanning, setIsScanning] = useState(true);
+    const [cameraEnabled, setCameraEnabled] = useState(true);
     const [showManualEntry, setShowManualEntry] = useState(false);
     const [manualCode, setManualCode] = useState("");
     const [isFlashOn, setIsFlashOn] = useState(false);
@@ -34,6 +35,11 @@ export default function ScannerPage() {
 
     // Session Data
     const [sessionEvent, setSessionEvent] = useState<{ id: number; scanner_key: string } | null>(null);
+    const sessionEventRef = useRef<{ id: number; scanner_key: string } | null>(null);
+
+    useEffect(() => {
+        sessionEventRef.current = sessionEvent;
+    }, [sessionEvent]);
 
     useEffect(() => {
         const storedEvent = sessionStorage.getItem("event_data");
@@ -95,10 +101,14 @@ export default function ScannerPage() {
         let animationFrameId: number;
 
         const startCamera = async () => {
+            if (!cameraEnabled) return;
+
             try {
                 stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: "environment",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
                     }
                 });
 
@@ -124,20 +134,26 @@ export default function ScannerPage() {
         };
 
         const tick = () => {
+            if (!cameraEnabled) return;
+
             if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
                 const video = videoRef.current;
                 const canvas = canvasRef.current;
 
                 if (canvas) {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    const ctx = canvas.getContext("2d");
+                    // Only update canvas dimensions if they changed to save performance
+                    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                    }
+
+                    const ctx = canvas.getContext("2d", { willReadFrequently: true });
                     if (ctx) {
                         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
                         const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                            inversionAttempts: "dontInvert",
+                            inversionAttempts: "attemptBoth",
                         });
 
                         if (code && code.data) {
@@ -162,7 +178,7 @@ export default function ScannerPage() {
                 cancelAnimationFrame(animationFrameId);
             }
         };
-    }, []); // Removed dependencies to prevent camera restart
+    }, [cameraEnabled]); // Camera restarts when enabled/disabled
 
     const toggleFlash = async () => {
         if (videoRef.current && videoRef.current.srcObject) {
@@ -181,7 +197,8 @@ export default function ScannerPage() {
     };
 
     const handleScan = (data: string, source: 'camera' | 'manual' = 'manual') => {
-        if (lastScannedRef.current === data || !sessionEvent) return;
+        const event = sessionEvent || sessionEventRef.current;
+        if (lastScannedRef.current === data || !event) return;
 
         // Validation block REMOVED
 
@@ -194,8 +211,8 @@ export default function ScannerPage() {
         toast.info("Validating ticket...");
 
         validate({
-            event_id: sessionEvent.id,
-            scanner_key: sessionEvent.scanner_key,
+            event_id: event.id,
+            scanner_key: event.scanner_key,
             access_code: accessCode,
         });
     };
@@ -221,22 +238,49 @@ export default function ScannerPage() {
             <canvas ref={canvasRef} className="hidden" />
 
             {/* Header Overlay */}
-            <div className="absolute top-0 left-0 right-0 z-20 p-6 flex justify-between items-start bg-gradient-to-b from-black/80 to-transparent">
+            <div className="absolute top-0 left-0 right-0 z-20 p-6 flex justify-between items-center bg-gradient-to-b from-black/90 via-black/40 to-transparent">
                 <button
                     onClick={() => router.back()}
                     className="bg-white/10 backdrop-blur-md border border-white/20 text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-white/20 transition-colors"
                 >
                     ← Exit
                 </button>
-                <div className="text-right">
-                    <p className="text-white/60 text-xs font-medium uppercase tracking-wider">Event ID: {sessionEvent?.id}</p>
+
+                <div className="flex items-center gap-3 bg-black/40 backdrop-blur-md border border-white/10 p-1.5 rounded-full">
+                    <span className={`text-[10px] uppercase tracking-widest font-bold ml-2 ${cameraEnabled ? 'text-green-400' : 'text-white/40'}`}>
+                        {cameraEnabled ? 'Auto-Scan' : 'Manual'}
+                    </span>
+                    <button
+                        onClick={() => setCameraEnabled(!cameraEnabled)}
+                        className={`w-12 h-6 rounded-full relative transition-colors duration-300 ${cameraEnabled ? 'bg-green-500/30' : 'bg-white/10'}`}
+                    >
+                        <div className={`absolute top-1 w-4 h-4 rounded-full transition-all duration-300 shadow-sm ${cameraEnabled ? 'right-1 bg-green-500' : 'left-1 bg-white/40'}`}></div>
+                    </button>
+                </div>
+
+                <div className="hidden sm:block text-right">
+                    <p className="text-white/60 text-[10px] font-medium uppercase tracking-wider">Event ID: {sessionEvent?.id}</p>
                 </div>
             </div>
 
             {/* Viewfinder Area */}
             <div className="flex-1 relative flex items-center justify-center">
-                <div className="absolute inset-0 bg-gray-900">
-                    {hasCameraPermission === false ? (
+                <div className="absolute inset-0 bg-gray-950">
+                    {!cameraEnabled ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-black/40">
+                            <div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mb-6 border border-white/10">
+                                <span className="text-4xl">⌨️</span>
+                            </div>
+                            <h3 className="text-white font-bold text-xl mb-2">Manual Verification</h3>
+                            <p className="text-white/50 text-sm max-w-[240px] text-center">Camera is disabled. Please use manual entry for verification.</p>
+                            <button
+                                onClick={() => setShowManualEntry(true)}
+                                className="mt-8 bg-primary text-white font-bold px-8 py-3 rounded-xl shadow-lg shadow-primary/20"
+                            >
+                                Open Manual Entry
+                            </button>
+                        </div>
+                    ) : hasCameraPermission === false ? (
                         <div className="w-full h-full flex items-center justify-center text-gray-500 bg-black">
                             <p className="text-center px-4">Camera access denied.<br />Please enable permissions.</p>
                         </div>
@@ -245,29 +289,40 @@ export default function ScannerPage() {
                             ref={videoRef}
                             playsInline
                             muted
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover opacity-60"
                         />
                     )}
                 </div>
 
-                <div className="relative z-10 w-72 h-72 border-2 border-primary/50 rounded-3xl flex flex-col items-center justify-between p-4 shadow-[0_0_0_1000px_rgba(0,0,0,0.5)]">
-                    {/* ... (overlay elements) */}
-                    <div className="w-full flex justify-between">
-                        <div className="w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-xl animate-pulse"></div>
-                        <div className="w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-xl animate-pulse"></div>
-                    </div>
-                    {isScanning && !showSuccessModal && (
-                        <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)] animate-[scan_2s_ease-in-out_infinite]"></div>
-                    )}
-                    <div className="w-full flex justify-between">
-                        <div className="w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-xl animate-pulse"></div>
-                        <div className="w-8 h-8 border-b-4 border-r-4 border-primary rounded-br-xl animate-pulse"></div>
-                    </div>
-                </div>
+                {cameraEnabled && (
+                    <>
+                        <div className="relative z-10 w-72 h-72 border-2 border-primary/30 rounded-[40px] flex flex-col items-center justify-between p-4 shadow-[0_0_0_1000px_rgba(0,0,0,0.7)] group">
+                            <div className="absolute inset-0 bg-primary/5 rounded-[40px] animate-pulse"></div>
+                            <div className="w-full flex justify-between relative z-10">
+                                <div className="w-10 h-10 border-t-4 border-l-4 border-primary rounded-tl-2xl"></div>
+                                <div className="w-10 h-10 border-t-4 border-r-4 border-primary rounded-tr-2xl"></div>
+                            </div>
 
-                <p className="absolute bottom-32 z-20 text-white/80 text-sm font-medium bg-black/40 px-4 py-2 rounded-full backdrop-blur-sm">
-                    Align QR code within frame
-                </p>
+                            <div className="flex flex-col items-center gap-2 relative z-10">
+                                <div className="w-1.5 h-1.5 bg-primary rounded-full animate-ping"></div>
+                                <span className="text-[10px] text-primary font-black uppercase tracking-[0.2em]">Searching</span>
+                            </div>
+
+                            {isScanning && !showSuccessModal && (
+                                <div className="absolute top-1/2 left-6 right-6 h-[2px] bg-primary shadow-[0_0_15px_rgba(var(--primary-rgb),0.8)] animate-[scan_2.5s_ease-in-out_infinite]"></div>
+                            )}
+
+                            <div className="w-full flex justify-between relative z-10">
+                                <div className="w-10 h-10 border-b-4 border-l-4 border-primary rounded-bl-2xl"></div>
+                                <div className="w-10 h-10 border-b-4 border-r-4 border-primary rounded-br-2xl"></div>
+                            </div>
+                        </div>
+
+                        <p className="absolute bottom-32 z-20 text-white/90 text-xs font-bold bg-white/5 border border-white/10 px-6 py-2.5 rounded-full backdrop-blur-xl tracking-wide uppercase">
+                            Align QR code within frame
+                        </p>
+                    </>
+                )}
             </div>
 
             {/* Footer Actions */}
