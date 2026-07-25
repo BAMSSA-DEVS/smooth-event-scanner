@@ -387,18 +387,38 @@ export default function ScannerPage() {
             )}
 
             {/* Success Modal */}
-            {showSuccessModal && (
+            {showSuccessModal && (() => {
+                const alreadyCheckedIn = scannedTicket?.attendee_already_checked_in ?? false;
+                const checkedInAt = scannedTicket?.checked_in_at ?? null;
+                const formatCheckedInAt = (iso: string | null) =>
+                    iso
+                        ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+                        : "—";
+
+                return (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-md p-0 sm:p-4 perspective-1000">
                     <div className="bg-white w-full max-w-sm rounded-t-3xl sm:rounded-3xl p-8 shadow-2xl animate-[slideUp_0.3s_cubic-bezier(0.16,1,0.3,1)]">
                         <div className="flex flex-col items-center text-center">
-                            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6 shadow-sm">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-green-600">
-                                    <path d="M20 6 9 17l-5-5" />
-                                </svg>
+                            <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 shadow-sm ${alreadyCheckedIn ? "bg-amber-100" : "bg-green-100"}`}>
+                                {alreadyCheckedIn ? (
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600">
+                                        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                        <line x1="12" y1="9" x2="12" y2="13" />
+                                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                                    </svg>
+                                ) : (
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-green-600">
+                                        <path d="M20 6 9 17l-5-5" />
+                                    </svg>
+                                )}
                             </div>
 
-                            <h2 className="text-2xl font-bold text-gray-900 mb-1">Ticket Valid!</h2>
-                            <p className="text-gray-500 mb-8 font-medium">Entry Authorized</p>
+                            <h2 className="text-2xl font-bold text-gray-900 mb-1">
+                                {alreadyCheckedIn ? "Already Checked In" : "Ticket Valid!"}
+                            </h2>
+                            <p className="text-gray-500 mb-8 font-medium">
+                                {alreadyCheckedIn ? "Attendee was previously admitted" : "Entry Authorized"}
+                            </p>
 
                             <div className="w-full bg-gray-50 rounded-2xl p-6 mb-8 border border-gray-100">
                                 <div className="space-y-4">
@@ -416,6 +436,17 @@ export default function ScannerPage() {
                                         <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Email</p>
                                         <p className="text-sm font-medium text-gray-600 truncate">{scannedTicket?.email}</p>
                                     </div>
+                                    <div className="w-full h-px bg-gray-200"></div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Check-in Status</p>
+                                        <p className={`text-sm font-bold ${alreadyCheckedIn ? "text-amber-600" : "text-green-600"}`}>
+                                            {alreadyCheckedIn ? "Previously admitted" : "Newly checked in"}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Checked In At</p>
+                                        <p className="text-sm font-medium text-gray-600">{formatCheckedInAt(checkedInAt)}</p>
+                                    </div>
                                 </div>
                             </div>
 
@@ -428,7 +459,8 @@ export default function ScannerPage() {
                         </div>
                     </div>
                 </div>
-            )}
+                );
+            })()}
 
             <style jsx global>{`
             @keyframes scan {

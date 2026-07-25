@@ -15,6 +15,8 @@ export interface ValidateResponse {
             ticket_name: string;
             name: string;
             email: string;
+            attendee_already_checked_in: boolean;
+            checked_in_at: string | null;
         };
     };
 }
